@@ -10,4 +10,4 @@ services:
   - docker
 
 script:
-  - go test -v
+  - go test -v ./...
