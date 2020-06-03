@@ -204,3 +204,35 @@ func TestDeleteProduct(t *testing.T) {
 	response = executeRequest(req)
 	checkResponseCode(t, http.StatusNotFound, response.Code)
 }
+
+// tries to get a random product
+func TestGetRandomProduct(t *testing.T) {
+	clearTable()
+	addProducts(5)
+
+	req, _ := http.NewRequest("GET", "/product/random", nil)
+	response := executeRequest(req)
+
+	checkResponseCode(t, http.StatusOK, response.Code)
+}
+
+// tries to get a random product
+func TestGetNumberOfProducts(t *testing.T) {
+	clearTable()
+	addProducts(3)
+
+	req, _ := http.NewRequest("GET", "/products/number", nil)
+	response := executeRequest(req)
+
+	checkResponseCode(t, http.StatusOK, response.Code)
+}
+
+// tries to get a number of products in html table format
+func TestGetHTMLTable(t *testing.T) {
+	clearTable()
+	addProducts(3)
+
+	req, _ := http.NewRequest("GET", "/products/htmltable", nil)
+	response := executeRequest(req)
+	checkResponseCode(t, http.StatusOK, response.Code)
+}

@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
@@ -67,6 +70,53 @@ func (a *App) getProduct(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, p)
 }
 
+// handler to get a random product from the database
+func (a *App) getNumberOfProducts(w http.ResponseWriter, r *http.Request) {
+	// get total number of available products
+	var count int
+	row := a.DB.QueryRow("SELECT COUNT(*) FROM products")
+	err := row.Scan(&count)
+	if err != nil {
+		log.Fatal(err)
+		respondWithError(w, http.StatusNotFound, "Product not found")
+	}
+
+	response := map[string]int{
+		"count": count,
+	}
+
+	respondWithJSON(w, http.StatusOK, response)
+}
+
+// handler to get a random product from the database
+func (a *App) getRandomProduct(w http.ResponseWriter, r *http.Request) {
+	// get total number of available products
+	var count int
+	row := a.DB.QueryRow("SELECT COUNT(*) FROM products")
+	err := row.Scan(&count)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	randomID := rand.Intn(count-1) + 1
+
+	p := product{ID: randomID} // instantiate a product with the id from the request
+	// try if getting this product fails
+	if err := p.getProduct(a.DB); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			respondWithError(w, http.StatusNotFound, "Product not found")
+		default:
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	// if getting the product does not fail, return the requested product
+	respondWithJSON(w, http.StatusOK, p)
+}
+
 // convenience function to send an http error response
 func respondWithError(w http.ResponseWriter, code int, message string) {
 	respondWithJSON(w, code, map[string]string{"error": message})
@@ -105,6 +155,53 @@ func (a *App) getProducts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, products)
+}
+
+// http handler...returns a number of products at once in html table format
+func (a *App) getHTMLTable(w http.ResponseWriter, r *http.Request) {
+	// convert response variables to integers
+	count, _ := strconv.Atoi(r.FormValue("count"))
+	start, _ := strconv.Atoi(r.FormValue("start"))
+
+	// check if variables are out of bounds
+	if count > 10 || count < 1 {
+		count = 10
+	}
+	if start < 0 {
+		start = 0
+	}
+
+	// get products from the database
+	products, err := getProducts(a.DB, start, count)
+
+	// check if database request was unsuccessful
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString("<table style='width:100%'>\n")
+	sb.WriteString("\t<tr>\n")
+	sb.WriteString("\t\t<th>ID</th>\n")
+	sb.WriteString("\t\t<th>Name</th>\n")
+	sb.WriteString("\t\t<th>Price</th>\n")
+	sb.WriteString("\t</tr>\n")
+	for _, product := range products {
+		sb.WriteString("\t<tr>\n")
+		sb.WriteString(fmt.Sprintf("\t\t<th>%d</th>\n", product.ID))
+		sb.WriteString(fmt.Sprintf("\t\t<th>%s</th>\n", product.Name))
+		sb.WriteString(fmt.Sprintf("\t\t<th>%f</th>\n", product.Price))
+		sb.WriteString("\t</tr>\n")
+	}
+	sb.WriteString("</table>\n")
+
+	response := map[string]string{
+		"table": sb.String(),
+	}
+
+	respondWithJSON(w, http.StatusOK, response)
 }
 
 // http handler...creates a new product in the database
@@ -189,4 +286,7 @@ func (a *App) initializeRoutes() {
 	a.Router.HandleFunc("/product/{id:[0-9]+}", a.getProduct).Methods("GET")
 	a.Router.HandleFunc("/product/{id:[0-9]+}", a.updateProduct).Methods("PUT")
 	a.Router.HandleFunc("/product/{id:[0-9]+}", a.deleteProduct).Methods("DELETE")
+	a.Router.HandleFunc("/product/random", a.getRandomProduct).Methods("GET")
+	a.Router.HandleFunc("/products/number", a.getNumberOfProducts).Methods("GET")
+	a.Router.HandleFunc("/products/htmltable", a.getHTMLTable).Methods("GET")
 }
